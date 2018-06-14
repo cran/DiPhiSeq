@@ -1,0 +1,10 @@
+dda43b650d95954d10e787bc04c2089d *DESCRIPTION
+977cf69ac6eaa41c92de57b1f4c9b710 *NAMESPACE
+ee67cef32de7415f54bd4ac4735e1310 *R/data.R
+135fc9faced7225e08c002349d79421a *R/diphiseq.R
+e17b726a1fc88da7ff93b4054779ab8d *R/robtest.R
+4fddebcef9310cb4f1d2e15974b8fb6f *data/example_data.RData
+3f874ebafa338f2ed23e9d173c6f1425 *man/diphiseq.Rd
+9590393f14749b4e301199f5c6a47da3 *man/example_data.Rd
+46edf4e97c0a9d1351b94753e948963c *man/robnb.Rd
+f31bb65d128c4172b7380e1869cad812 *man/robtest.Rd

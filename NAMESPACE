@@ -1,0 +1,2 @@
+importFrom("stats", "dnbinom", "p.adjust", "pnorm", "uniroot")
+exportPattern("^[[:alpha:]]+")
