@@ -6,7 +6,7 @@
 need for the analysis.}
 \usage{
 diphiseq(countmat, classlab, depth = NULL, c.tukey.beta = 4,
-  c.tukey.phi = 4)
+  c.tukey.phi = 4, phi.ini = "adaptive")
 }
 \arguments{
 \item{countmat}{A count matrix. Rows are genes, and columns are samples. Each element/count is
@@ -18,14 +18,20 @@ the number of reads mapped to a gene in a sample.}
 provide estimated values from edgeR, DESeq, PoissonSeq, or other software that they prefer.
 If no values are provided, depth estimated by total counts will be used.}
 
-\item{c.tukey.beta}{The c value for beta in Huber function. The default value, 4, is typically
+\item{c.tukey.beta}{The c value for beta in Tukey's biweight function. The default value, 4, is typically
 regarded as appropriate and should work for most datasets.}
 
-\item{c.tukey.phi}{The c value for phi in Huber function. The default value, 4, is typically
+\item{c.tukey.phi}{The c value for phi in Tukey's biweight function. The default value, 4, is typically
 regarded as appropriate and should work for most datasets.}
+
+\item{phi.ini}{The initial value for phi to start search. If phi.in == 'adaptive' (the default value), 
+the algorithm will adaptively
+choose a value (check Algorithm 1 for details). Otherwise, a positive numeric value (such as 0.5)
+should be given.}
 }
 \value{
-A data.frame that contains the following columns:
+A List that contains the following elements:
+\code{tab}: This is a data frame that contains the main results of this package. It has the following columns:
   \code{phi1}: the estimated dispersion of sample group 1.
   \code{phi2}: the estimated dispersion of sample group 2.
   \code{beta1}: the estimated (log) expression of sample group 1.
@@ -36,6 +42,14 @@ A data.frame that contains the following columns:
   \code{p.value.beta}: the p value for DE.
   \code{fdr.phi}: the FDR for DD.
   \code{fdr.beta}: the FDR for DE.
+\code{log.depth}: A vector of the log sequencing depths.
+\code{countmat}: This is the count matrix that the user provided.
+\code{classlab}: This is the vecgtor of class labels that the user provided.
+\code{phi.ini}: The initial searching value of the dispersion parameter.
+\code{mumat}: This is the (estimated) mu (expected expression) matrix, of the same size as countmat.
+  In another word, E(countmat)=mumat.
+\code{phimat}: This is the (estimated) phi matrix, of the same size as countmat.
+  In another word, counmat ~ negative binomial(mumat, phimat).
 }
 \description{
 Main function. For most users, this function is all what they
@@ -45,4 +59,8 @@ need for the analysis.
 countmat <- matrix(rnbinom(100, size=1, mu=50), nrow=4, ncol=25)
 classlab <- c(rep(1, 10), rep(2, 15))
 res <- diphiseq(countmat, classlab)
+
+countmat <- matrix(rnbinom(100, size=1, mu=50), nrow=4, ncol=25)
+classlab <- c(rep(1, 10), rep(2, 15))
+res <- diphiseq(countmat, classlab, phi.ini=0.5)
 }

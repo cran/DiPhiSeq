@@ -5,9 +5,9 @@
 #' Normal users often don't need to use this function directly.
 #'
 #' @param y1 counts from group 1. a vector.
-#' @param d1 sequencing depth for samples in group 1. a vector.
+#' @param log.depth1 log(sequencing depths) for samples in group 1. a vector.
 #' @param y2 counts from group 2. a vector.
-#' @param d2 sequencing depth for samples in group 2. a vector.
+#' @param log.depth2 log(sequencing depths) for samples in group 2. a vector.
 #' @param c.tukey.beta The c value for beta in Huber function. The default value, 4, is typically
 #'   regarded as appropriate and should work for most datasets.
 #' @param c.tukey.phi The c value for phi in Huber function. The default value, 4, is typically
@@ -26,13 +26,11 @@
 #' d2 <- runif(15, min=1, max=2)
 #' y1 <- rnbinom(10, size=1, mu=d1*50)
 #' y2 <- rnbinom(15, size=1, mu=d2*50)
-#' res <- robtest(y1, d1, y2, d2)
-robtest <- function(y1, d1, y2, d2, c.tukey.beta=4, c.tukey.phi=4)
-{
-  c.tukey.sig <- c.tukey.phi # in robnb, c.,tukey.sig is used.
-
-  res1 <- robnb(y1, d1, c.tukey.beta=c.tukey.beta, c.tukey.sig=c.tukey.sig)
-  res2 <- robnb(y2, d2, c.tukey.beta=c.tukey.beta, c.tukey.sig=c.tukey.sig)
+#' res <- robtest(y1, log(d1), y2, log(d2))
+#' @export
+robtest <- function(y1, log.depth1, y2, log.depth2, c.tukey.beta=4, c.tukey.phi=4) {
+  res1 <- robnb(y=y1, log.depth=log.depth1, c.tukey.beta=c.tukey.beta, c.tukey.phi=c.tukey.phi)
+  res2 <- robnb(y=y2, log.depth=log.depth2, c.tukey.beta=c.tukey.beta, c.tukey.phi=c.tukey.phi)
 
   statistic.phi <- (res2$phi - res1$phi) / sqrt(res2$sd.phi^2 + res1$sd.phi^2)
   statistic.beta <- (res2$beta - res1$beta) / sqrt(res2$sd.beta^2 + res1$sd.beta^2)
@@ -55,27 +53,26 @@ robtest <- function(y1, d1, y2, d2, c.tukey.beta=4, c.tukey.phi=4)
 #' Most users don't need to call this function directly.
 #'
 #' @param y A count vector.
-#' @param d Vector of sequencing depths.
+#' @param log.depth Vector of log(sequencing depths).
 #' @param c.tukey.beta The c value for beta in Huber function. The default value should be appropriate
 #'   for most datasets.
-#' @param c.tukey.sig The c value for phi in Huber function. The default value should be appropriate
+#' @param c.tukey.phi The c value for phi in Huber function. The default value should be appropriate
 #'   for most datasets.
+#' @param phi.ini The initial value of phi.
 #' @param alpha A positive value for setting initial values. The default value is usually appropriate.
-#' @param minsig A searching parameter for Algorithm 1 (check the algorithm for details.)
+#' @param minphi A searching parameter for Algorithm 1 (check the algorithm for details.)
 #'   The default value is usually appropriate.
-#' @param maxsig A searching parameter for Algorithm 1 (check the algorithm for details.)
+#' @param maxphi A searching parameter for Algorithm 1 (check the algorithm for details.)
 #'   The default value is usually appropriate.
 #' @param maxit Maximum number of iterations for the outer loop.
 #'   The default value is usually appropriate.
 #' @param maxit.beta Maximum number of iterations for the inner loop of solving beta.
 #'   The default value is usually appropriate.
-#' @param maxit.sig Maximum number of iterations for the inner loop of solving phi (named sig in this function).
+#' @param maxit.phi Maximum number of iterations for the inner loop of solving phi.
 #'   The default value is usually appropriate.
 #' @param tol.beta The numerical tolerance of solving beta.
 #'   The default value is usually appropriate.
-#' @param tol.sig The numerical tolerance of solving phi (named sig in this function).
-#'   The default value is usually appropriate.
-#' @param sig.ini A searching parameter for Algorithm 1 (check the algorithm for details.)
+#' @param tol.phi The numerical tolerance of solving phi.
 #'   The default value is usually appropriate.
 #' @return A list that contains the elements:
 #'   \code{beta}: the estimated (log) expression.
@@ -85,265 +82,124 @@ robtest <- function(y1, d1, y2, d2, c.tukey.beta=4, c.tukey.phi=4)
 #'   \code{sd.beta}: the standard error of beta.
 #'   \code{sd.phi}: the standard error of phi.
 #'   \code{y}: the input y value.
-#'   \code{d}: the input d value.
-#'   \code{D}: log(d).
+#'   \code{log.depth}: log(sequencing depth).
 #' @examples
 #' d <- runif(10, min=1, max=2)
 #' y <- rnbinom(10, size=1, mu=d*50)
-#' res <- robnb(y, d)
-robnb <- function(y, d, c.tukey.beta=4, c.tukey.sig=4,
-                            alpha=0.2, minsig=0.01, maxsig=5, maxit=30, maxit.beta=30, maxit.sig=30,
-                            tol.beta=0.01, tol.sig=0.005, sig.ini=0.5)
+#' res <- robnb(y, log(d))
+#' @export
+robnb <- function(y, log.depth, c.tukey.beta=4, c.tukey.phi=4, phi.ini=0.5,
+                            alpha=0.2, minphi=0.01, maxphi=5, maxit=30, maxit.beta=30, maxit.phi=30,
+                            tol.beta=0.01, tol.phi=0.005)
 {
+  beta.ini <- ini.value.beta(y, log.depth, alpha=alpha)
 
-	varfunc <- function(mu,sig){mu+sig*mu^2}
-
-	loglkhd <- function(sig,y,mu){
-		sum(lgamma(y+1/sig)-lgamma(1/sig)-lgamma(y+1)-(1/sig)*log(sig*mu+1)+y*log(sig*mu/(sig*mu+1)))
-	}
-
-	score.sig.ML <- function(sig,y,mu){
-		sum(digamma(y+1/sig)-digamma(1/sig)-log(sig*mu+1)-sig*(y-mu)/(sig*mu+1))
-	}
-
-	info.sig.ML <- function(sig,y,mu){
-		(-1/sig^2)*(sum(trigamma(y+1/sig))-length(y)*trigamma(1/sig))-sum((sig*mu^2+y)/(sig*mu+1)^2)
-	}
-
-	tukeypsi <- function(r,c.tukey){
-		ifelse(abs(r)>c.tukey,0,((r/c.tukey)^2-1)^2*r)
-	}
-
-	E.tukeypsi.1 <- function(mui,sig,c.tukey){
-		sqrtVmui <- sqrt(varfunc(mui,sig))
-		j1 <- max(c(ceiling(mui-c.tukey*sqrtVmui),0))
-		j2 <- floor(mui+c.tukey*sqrtVmui)
-		if (j1>j2){0}
-		else {
-			j12 <- j1:j2
-			sum((((j12-mui)/(c.tukey*sqrtVmui))^2-1)^2*(j12-mui)*dnbinom(j12,mu=mui,size=1/sig))/sqrtVmui
-		}
-	}
-
-	E.tukeypsi.2 <- function(mui,sig,c.tukey){
-		sqrtVmui <- sqrt(varfunc(mui,sig))
-		j1 <- max(c(ceiling(mui-c.tukey*sqrtVmui),0))
-		j2 <- floor(mui+c.tukey*sqrtVmui)
-		if (j1>j2){0}
-		else {
-			j12 <- j1:j2
-			sum((((j12-mui)/(c.tukey*sqrtVmui))^2-1)^2*(j12-mui)^2*dnbinom(j12,mu=mui,size=1/sig))/sqrtVmui
-		}
-	}
-
-	psi.sig.ML <- function(r,mu,sig){
-		digamma(r*sqrt(mu*(sig*mu+1))+mu+1/sig)-sig*r*sqrt(mu/(sig*mu+1))-digamma(1/sig)-log(sig*mu+1)
-	}
-
-	ai.sig.tukey <- function(mui,sig,c.tukey){
-
-		psi.sig.ML.mod <- function(j,mui,invsig){
-			digamma(j+invsig)-digamma(invsig)-log(mui/invsig+1)-(j-mui)/(mui+invsig)
-		}
-		sqrtVmui <- sqrt(mui*(sig*mui+1))
-		invsig <- 1/sig
-		j1 <- max(c(ceiling(mui-c.tukey*sqrtVmui),0))
-		j2 <- floor(mui+c.tukey*sqrtVmui)
-		if (j1>j2){0}
-		else {
-			j12 <- j1:j2
-			sum((((j12-mui)/(c.tukey*sqrtVmui))^2-1)^2*psi.sig.ML.mod(j=j12,mui=mui,invsig=invsig)*dnbinom(x=j12,mu=mui,size=invsig))
-		}
-	}
-
-	sig.rob.tukey <- function(sig,y,mu,c.tukey){
-		r <- (y-mu)/sqrt(varfunc(mu,sig))
-		wi <- tukeypsi(r=r,c.tukey=c.tukey)/r
-		sum(wi*psi.sig.ML(r=r,mu=mu,sig=sig)-sapply(X=mu,FUN=ai.sig.tukey,sig=sig,c.tukey=c.tukey))
-	}
-
-	fullscore.sig <- function(y,mui,sigma){
-		(digamma(y+1/sigma)-digamma(1/sigma)-log(sigma*mui+1)-sigma*(y-mui)/(sigma*mui+1))/(-sigma^2)
-	}
-
-	all.expectations.tukey <- function(mui,sigma,c.tukey.beta,c.tukey.sigma){
-		expec <- list()
-		sqrtVmui <- sqrt(varfunc(mui,sigma))
-		j1.beta <- max(c(ceiling(mui-c.tukey.beta*sqrtVmui),0))
-		j2.beta <- floor(mui+c.tukey.beta*sqrtVmui)
-		if (j1.beta>j2.beta){
-			expec$tukeypsi2 <- 0
-			expec$psibetascoresig.beta <- 0
-			expec$tukeypsi13 <- 0
-			expec$psibetaminuspsisig <- 0
-			j1.sigma <- max(c(ceiling(mui-c.tukey.sigma*sqrtVmui),0))
-			j2.sigma <- floor(mui+c.tukey.sigma*sqrtVmui)
-			if (j1.sigma>j2.sigma){
-				expec$psibetascoresig.sigma <- 0
-				expec$psiscoresig2 <- 0
-				expec$psiscoresig13 <- 0
-			} else {
-				j12.sigma <- j1.sigma:j2.sigma
-				probNB.sigma <- dnbinom(j12.sigma,mu=mui,size=1/sigma)
-				resi.sigma <- (j12.sigma-mui)/sqrtVmui
-				tukeyresi.sigma <- tukeypsi(r=resi.sigma,c.tukey=c.tukey.sigma)
-				fullscoresig.sigma <- fullscore.sig(y=j12.sigma,mui=mui,sigma=sigma)
-				expec$psibetascoresig.sigma <- sum(tukeyresi.sigma*fullscoresig.sigma*probNB.sigma)/sqrtVmui
-				expec$psiscoresig2 <- sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma^2*probNB.sigma)
-				expec$psiscoresig13 <- sum((tukeyresi.sigma/resi.sigma*fullscoresig.sigma)^2*probNB.sigma)+
-					-sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma*probNB.sigma)^2
-			}
-		} else {
-			j12.beta <- j1.beta:j2.beta
-			probNB.beta <- dnbinom(j12.beta,mu=mui,size=1/sigma)
-			resi.beta <- (j12.beta-mui)/sqrtVmui
-			tukeyresi.beta <- tukeypsi(r=resi.beta,c.tukey=c.tukey.beta)
-			fullscoresig.beta <- fullscore.sig(y=j12.beta,mui=mui,sigma=sigma)
-			expec$tukeypsi2 <- sum(tukeyresi.beta*(j12.beta-mui)*probNB.beta)/sqrtVmui^3
-			expec$psibetascoresig.beta <- sum(tukeyresi.beta*fullscoresig.beta*probNB.beta)/sqrtVmui
-			expec$tukeypsi13 <- (sum(tukeyresi.beta^2*probNB.beta)-sum(tukeyresi.beta*probNB.beta)^2)/sqrtVmui^2
-			j1.sigma <- max(c(ceiling(mui-c.tukey.sigma*sqrtVmui),0))
-			j2.sigma <- floor(mui+c.tukey.sigma*sqrtVmui)
-			if (j1.sigma>j2.sigma){
-				expec$psibetascoresig.sigma <- 0
-				expec$psiscoresig2 <- 0
-				expec$psibetaminuspsisig <- 0
-				expec$psiscoresig13 <- 0
-			} else {
-				j12.sigma <- j1.sigma:j2.sigma
-				probNB.sigma <- dnbinom(j12.sigma,mu=mui,size=1/sigma)
-				resi.sigma <- (j12.sigma-mui)/sqrtVmui
-				tukeyresi.sigma <- tukeypsi(r=resi.sigma,c.tukey=c.tukey.sigma)
-				fullscoresig.sigma <- fullscore.sig(y=j12.sigma,mui=mui,sigma=sigma)
-				expec$psibetascoresig.sigma <- sum(tukeyresi.sigma*fullscoresig.sigma*probNB.sigma)/sqrtVmui
-				expec$psiscoresig2 <- sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma^2*probNB.sigma)
-				if (j2.beta<j2.sigma){
-					expec$psibetaminuspsisig <- (sum(tukeyresi.beta*tukeyresi.sigma[1:length(j12.beta)]/
-                                           resi.sigma[1:length(j12.beta)]*fullscoresig.sigma[1:length(j12.beta)]*probNB.beta)+
-                                       -sum(tukeyresi.beta*probNB.beta)*sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma*probNB.sigma))/sqrtVmui
-				} else {
-					expec$psibetaminuspsisig <- (sum(tukeyresi.beta[1:length(j12.sigma)]*tukeyresi.sigma/resi.sigma*fullscoresig.sigma*probNB.sigma)+
-                                       -sum(tukeyresi.beta*probNB.beta)*sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma*probNB.sigma))/sqrtVmui
-				}
-				expec$psiscoresig13 <- sum((tukeyresi.sigma/resi.sigma*fullscoresig.sigma)^2*probNB.sigma)+
-					-sum(tukeyresi.sigma/resi.sigma*fullscoresig.sigma*probNB.sigma)^2
-			}
-		}
-		return(expec)
-	}
-
-	equation.2 <- function(beta, D, y, sig, c.tukey){
-		mu <- exp(beta + D)
-		r <- (y-mu) / sqrt(varfunc(mu,sig))
-		res <- (tukeypsi(r=r,c.tukey=c.tukey) - sapply(X=mu, FUN=E.tukeypsi.1, sig=sig, c.tukey=c.tukey)) / sqrt(varfunc(mu,sig)) * mu * 1
-		return(sum(res))
-	}
-
-	set.minsig.maxsig <- function(sig, D, y, beta, c.tukey.sig, gint=1.2, nint=40){
-		sign0 <- sign(sig.rob.tukey(sig=sig, y=y, mu=exp(beta + D), c.tukey=c.tukey.sig))
-		for (i in 1 : nint)
-		{
-			sign1 <- sign(sig.rob.tukey(sig=sig / gint ^ i, y=y, mu=exp(beta + D), c.tukey=c.tukey.sig))
-			if (sign1 * sign0 <= 0) {minsig <- sig / gint ^ i; maxsig <- sig; break}
-
-			sign2 <- sign(sig.rob.tukey(sig=sig * gint ^ i, y=y, mu=exp(beta + D), c.tukey=c.tukey.sig))
-			if (sign2 * sign0 <= 0) {minsig <- sig; maxsig <- sig * gint ^ i; break}
-		}
-		if (i == nint) {stop("Cannot identify the correct range of sigma!")}
-
-		return(c(minsig, maxsig))
-	}
-
-	set.minbeta.maxbeta <- function(beta, D, y, sig, c.tukey.beta, gint=0.1, nint=40){
-		sign0 <- sign(equation.2(beta, D, y, sig, c.tukey.beta))
-		for (i in 1 : nint)
-		{
-			sign1 <- sign(equation.2(beta - gint * i, D, y, sig, c.tukey.beta))
-			if (sign1 * sign0 <= 0) {minbeta <- beta - gint * i; maxbeta <- beta; break}
-
-			sign2 <- sign(equation.2(beta + gint * i, D, y, sig, c.tukey.beta))
-			if (sign2 * sign0 <= 0) {minbeta <- beta; maxbeta <- beta + gint * i; break}
-		}
-		if (i == nint) {stop("Cannot identify the correct range of beta!")}
-
-		return(c(minbeta, maxbeta))
-	}
-
-	rob.glm <- function(y, D, beta, sig, c.tukey.beta, c.tukey.sig,
-                              minsig, maxsig, maxit, maxit.beta, maxit.sig, tol.beta, tol.sig){
-		fconv <- FALSE
-		for (it in 1 : maxit)
-		{
-			cat("\n Iteration ", it, " ")
-
-			sig0 <- sig
-			beta0 <- beta
-
-			sig.interval <- set.minsig.maxsig(sig=sig, D=D, y=y, beta=beta, c.tukey.sig=c.tukey.sig, gint=1.2, nint=40)
-			sig <- uniroot(f=sig.rob.tukey, interval=sig.interval, tol=tol.sig, maxiter=maxit.sig, mu=exp(beta + D), y=y, c.tukey=c.tukey.sig)$root
-			if (is.na(sig) | sig>maxsig) {sig <- maxsig}
-			cat(".")
-
-			beta.interval <- set.minbeta.maxbeta(beta=beta, D=D, y=y, sig=sig, c.tukey.beta=c.tukey.beta, gint=0.1, nint=40)
-			beta <- uniroot(f=equation.2, interval=beta.interval, tol=tol.beta, maxiter=maxit.beta, D=D, y=y, sig=sig, c.tukey=c.tukey.beta)$root
-			cat(".", fill=TRUE)
-
-			cat("sig =", sig, fill=TRUE)
-			cat("beta =", beta, fill=TRUE)
-
-			if (abs(sig - sig0) < tol.sig & abs(beta - beta0) < tol.beta) {fconv <- TRUE; break}
-		}
-
-		return(list(beta=beta, sig=sig, fconv=fconv))
-	}
-
-	all.vars <- function(y, D, beta, sig, c.tukey.beta, c.tukey.sig){
-
-		n <- length(y)
-		mu <- exp(beta + D)
-		expect <- sapply(X=mu, FUN=all.expectations.tukey, sigma=sig, c.tukey.beta=c.tukey.beta, c.tukey.sigma=c.tukey.sig)
-		M11 <- sum(as.numeric(unlist(expect['tukeypsi2',])*mu^2)) / n
-		M12 <- sum(as.numeric(unlist(expect['psibetascoresig.beta',])*mu)) / n
-		M21 <- sum(as.numeric(unlist(expect['psibetascoresig.sigma',])*mu)) / n
-		M22 <- sum(as.numeric(unlist(expect['psiscoresig2',]))) / n
-
-		Q11 <- sum(as.numeric(unlist(expect['tukeypsi13',])*mu^2)) / n
-		Q12 <- sum(as.numeric(unlist(expect['psibetaminuspsisig',])*mu)) / n
-		Q22 <- sum(as.numeric(unlist(expect['psiscoresig13',]))) / n
-
-		fullM <- rbind(cbind(M11,M12),t(c(M21,M22)))
-		fullQ <- rbind(cbind(Q11,Q12),t(c(Q12,Q22)))
-		vars <- solve(fullM)%*%fullQ%*%solve(fullM) / n
-
-		return(vars)
-	}
-
-	ini.values <- function(y, D, alpha=0.2){
-		ord <- order(y / exp(D))
-		n <- length(y)
-		ndel <- floor(n * alpha)
-		if (ndel >= floor(n / 2)) {ndel <- floor(n / 2) - 1}
-		if (ndel < 0) {ndel <- 0}
-		tokeep <- ord[(ndel + 1) : (n - ndel)]
-		beta.ini <- log(max(sum(y[tokeep]) / sum(exp(D)[tokeep]), 0.01))
-		return(beta.ini)
-	}
-
-  #d <- exp(log(d) - mean(log(d))) # this is a line I commented from Alicia's code
-  D <- log(d)
-
-  beta.ini <- ini.values(y, D, alpha=alpha)
-
-  rob.sol <- rob.glm(y=y, D=D, beta=beta.ini, sig=sig.ini, c.tukey.beta=c.tukey.beta, c.tukey.sig=c.tukey.sig,
-                         minsig=minsig, maxsig=maxsig, maxit=maxit, maxit.beta=maxit.beta, maxit.sig=maxit.sig,
-                         tol.beta=tol.beta, tol.sig=tol.sig)
+  rob.sol <- rob.glm(y=y, log.depth=log.depth, beta=beta.ini, phi=phi.ini, c.tukey.beta=c.tukey.beta, c.tukey.phi=c.tukey.phi,
+                         minphi=minphi, maxphi=maxphi, maxit=maxit, maxit.beta=maxit.beta, maxit.phi=maxit.phi,
+                         tol.beta=tol.beta, tol.phi=tol.phi)
   beta <- rob.sol$beta
-  sig <- rob.sol$sig
+  phi <- rob.sol$phi
   fconv <- rob.sol$fconv
 
-  vars <- all.vars(y=y, D=D, beta=beta, sig=sig, c.tukey.beta=c.tukey.beta, c.tukey.sig=c.tukey.sig)
+  vars <- jun.all.vars(y=y, log.depth=log.depth, beta=beta, phi=phi, c.tukey.beta=c.tukey.beta, c.tukey.phi=c.tukey.phi)
   sd.beta <- sqrt(vars[1, 1])
-  sd.sig <- sqrt(vars[2, 2])
+  sd.phi <- sqrt(vars[2, 2])
 
-  return(list(beta=beta, phi=sig, fconv=fconv, vars=vars, sd.beta=sd.beta, sd.phi=sd.sig, y=y, d=d, D=D))
+  return(list(beta=beta, phi=phi, fconv=fconv, vars=vars, sd.beta=sd.beta, sd.phi=sd.phi, y=y, log.depth=log.depth))
+}
+
+## search an interval of phi that contains the next solution
+set.minphi.maxphi <- function(phi, log.depth, y, beta, c.tukey.phi, gint=1.2, nint=40) {
+  sign0 <- sign(jun.sig.rob.tukey(phi=phi, y=y, mu=exp(beta + log.depth), c.tukey=c.tukey.phi))
+  for (i in 1 : nint) {
+    sign1 <- sign(jun.sig.rob.tukey(phi=phi / gint ^ i, y=y, mu=exp(beta + log.depth), c.tukey=c.tukey.phi))
+    if (sign1 * sign0 <= 0) {minphi <- phi / gint ^ i; maxphi <- phi; break}
+    
+    sign2 <- sign(jun.sig.rob.tukey(phi=phi * gint ^ i, y=y, mu=exp(beta + log.depth), c.tukey=c.tukey.phi))
+    if (sign2 * sign0 <= 0) {minphi <- phi; maxphi <- phi * gint ^ i; break}
+  }
+  if (i == nint) {stop("Cannot identify the correct range of phi!")}
+  
+  return(c(minphi, maxphi))
+}
+
+## search an interval of beta that contains the next solution
+set.minbeta.maxbeta <- function(beta, log.depth, y, phi, c.tukey.beta, gint=0.1, nint=40) {
+  sign0 <- sign(jun.equation.2(beta, log.depth, y, phi, c.tukey.beta))
+  for (i in 1 : nint) {
+    sign1 <- sign(jun.equation.2(beta - gint * i, log.depth, y, phi, c.tukey.beta))
+    if (sign1 * sign0 <= 0) {minbeta <- beta - gint * i; maxbeta <- beta; break}
+    
+    sign2 <- sign(jun.equation.2(beta + gint * i, log.depth, y, phi, c.tukey.beta))
+    if (sign2 * sign0 <= 0) {minbeta <- beta; maxbeta <- beta + gint * i; break}
+  }
+  if (i == nint) {stop("Cannot identify the correct range of beta!")}
+  
+  return(c(minbeta, maxbeta))
+}
+
+## given initial values of beta and phi, solve the glm problem
+rob.glm <- function(y, log.depth, beta, phi, c.tukey.beta, c.tukey.phi,
+                    minphi, maxphi, maxit, maxit.beta, maxit.phi, tol.beta, tol.phi) {
+  fconv <- FALSE
+  for (it in 1 : maxit) {
+    cat("\n Iteration ", it, " ")
+    
+    phi0 <- phi
+    beta0 <- beta
+    
+    phi.interval <- set.minphi.maxphi(phi=phi, log.depth=log.depth, y=y, beta=beta, c.tukey.phi=c.tukey.phi, gint=1.2, nint=40)
+    phi <- uniroot(f=jun.sig.rob.tukey, interval=phi.interval, tol=tol.phi, maxiter=maxit.phi, mu=exp(beta + log.depth), y=y, c.tukey=c.tukey.phi)$root
+    if (is.na(phi) | phi>maxphi) {phi <- maxphi}
+    cat(".")
+    
+    beta.interval <- set.minbeta.maxbeta(beta=beta, log.depth=log.depth, y=y, phi=phi, c.tukey.beta=c.tukey.beta, gint=0.1, nint=40)
+    beta <- uniroot(f=jun.equation.2, interval=beta.interval, tol=tol.beta, maxiter=maxit.beta, log.depth=log.depth, y=y, phi=phi, c.tukey=c.tukey.beta)$root
+    cat(".", fill=TRUE)
+    
+    cat("phi =", phi, fill=TRUE)
+    cat("beta =", beta, fill=TRUE)
+    
+    if (abs(phi - phi0) < tol.phi & abs(beta - beta0) < tol.beta) {fconv <- TRUE; break}
+  }
+  
+  return(list(beta=beta, phi=phi, fconv=fconv))
+}
+
+## this function gives a high-breakpoint naive estimate of the initial value of beta
+ini.value.beta <- function(y, log.depth, alpha=0.2) {
+  ord <- order(y / exp(log.depth))
+  n <- length(y)
+  ndel <- floor(n * alpha)
+  if (ndel >= floor(n / 2)) {ndel <- floor(n / 2) - 1}
+  if (ndel < 0) {ndel <- 0}
+  tokeep <- ord[(ndel + 1) : (n - ndel)]
+  beta.ini <- log(max(sum(y[tokeep]) / sum(exp(log.depth)[tokeep]), 0.01))
+  return(beta.ini)
+}
+
+## this function gives a high-breakpoint naive estimate of the initial value of sigma
+## We do not directly use this estimate as it may be too unstable. Instead,
+## We use the median value of all genes
+ini.value.phi.each.gene <- function(y, log.depth, beta.ini, alpha=0.2) {
+  mu <- exp(log.depth + beta.ini)
+  phi.s <- ((y - mu) ^ 2 - mu) / (mu ^ 2)
+  phi.each.gene <- mean(phi.s, trim=alpha, na.rm=TRUE)
+  return(phi.each.gene)
+}
+
+## this function gives the final initial value of phi
+## here two new parameters are introduced: min and max start value for the phi
+ini.value.phi <- function(countmat, classlab, log.depth, alpha=0.2) {
+  phi.each.gene <- matrix(NA, nrow=nrow(countmat), ncol=2)
+  for (i in 1 : nrow(countmat)) {
+    for (j in 1 : 2) {
+      beta.ini <- ini.value.beta(y=countmat[i, classlab == j], log.depth=log.depth[classlab == j], alpha=alpha)
+      phi.each.gene[i, j] <- ini.value.phi.each.gene(y=countmat[i, classlab == j], 
+          log.depth=log.depth[classlab == j], beta.ini=beta.ini, alpha=alpha)
+    }
+  }
+  phi.ini <- median(phi.each.gene)
+
+  return(phi.ini)
 }

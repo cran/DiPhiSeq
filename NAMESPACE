@@ -1,2 +1,5 @@
-importFrom("stats", "dnbinom", "p.adjust", "pnorm", "uniroot")
-exportPattern("^[[:alpha:]]+")
+importFrom("stats", "dnbinom", "p.adjust", "pnorm", "uniroot", "median")
+export(diphiseq)
+export(robnb)
+export(robtest)
+export(outprop)

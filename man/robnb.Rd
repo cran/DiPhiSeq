@@ -11,27 +11,29 @@ This function also implement Algorithm 1 of our submitted paper about DiPhiSeq.
 This function is called by robtest.
 Most users don't need to call this function directly.}
 \usage{
-robnb(y, d, c.tukey.beta = 4, c.tukey.sig = 4, alpha = 0.2,
-  minsig = 0.01, maxsig = 5, maxit = 30, maxit.beta = 30,
-  maxit.sig = 30, tol.beta = 0.01, tol.sig = 0.005, sig.ini = 0.5)
+robnb(y, log.depth, c.tukey.beta = 4, c.tukey.phi = 4, phi.ini = 0.5,
+  alpha = 0.2, minphi = 0.01, maxphi = 5, maxit = 30, maxit.beta = 30,
+  maxit.phi = 30, tol.beta = 0.01, tol.phi = 0.005)
 }
 \arguments{
 \item{y}{A count vector.}
 
-\item{d}{Vector of sequencing depths.}
+\item{log.depth}{Vector of log(sequencing depths).}
 
 \item{c.tukey.beta}{The c value for beta in Huber function. The default value should be appropriate
 for most datasets.}
 
-\item{c.tukey.sig}{The c value for phi in Huber function. The default value should be appropriate
+\item{c.tukey.phi}{The c value for phi in Huber function. The default value should be appropriate
 for most datasets.}
+
+\item{phi.ini}{The initial value of phi.}
 
 \item{alpha}{A positive value for setting initial values. The default value is usually appropriate.}
 
-\item{minsig}{A searching parameter for Algorithm 1 (check the algorithm for details.)
+\item{minphi}{A searching parameter for Algorithm 1 (check the algorithm for details.)
 The default value is usually appropriate.}
 
-\item{maxsig}{A searching parameter for Algorithm 1 (check the algorithm for details.)
+\item{maxphi}{A searching parameter for Algorithm 1 (check the algorithm for details.)
 The default value is usually appropriate.}
 
 \item{maxit}{Maximum number of iterations for the outer loop.
@@ -40,16 +42,13 @@ The default value is usually appropriate.}
 \item{maxit.beta}{Maximum number of iterations for the inner loop of solving beta.
 The default value is usually appropriate.}
 
-\item{maxit.sig}{Maximum number of iterations for the inner loop of solving phi (named sig in this function).
+\item{maxit.phi}{Maximum number of iterations for the inner loop of solving phi.
 The default value is usually appropriate.}
 
 \item{tol.beta}{The numerical tolerance of solving beta.
 The default value is usually appropriate.}
 
-\item{tol.sig}{The numerical tolerance of solving phi (named sig in this function).
-The default value is usually appropriate.}
-
-\item{sig.ini}{A searching parameter for Algorithm 1 (check the algorithm for details.)
+\item{tol.phi}{The numerical tolerance of solving phi.
 The default value is usually appropriate.}
 }
 \value{
@@ -61,8 +60,7 @@ A list that contains the elements:
   \code{sd.beta}: the standard error of beta.
   \code{sd.phi}: the standard error of phi.
   \code{y}: the input y value.
-  \code{d}: the input d value.
-  \code{D}: log(d).
+  \code{log.depth}: log(sequencing depth).
 }
 \description{
 Calculates the estimate and standard error of beta and phi.
@@ -77,5 +75,5 @@ Most users don't need to call this function directly.
 \examples{
 d <- runif(10, min=1, max=2)
 y <- rnbinom(10, size=1, mu=d*50)
-res <- robnb(y, d)
+res <- robnb(y, log(d))
 }

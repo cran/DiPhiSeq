@@ -8,16 +8,16 @@ It works for a single gene. y1 and y2 are count vectors for a single gene.
 diphiseq calls this function to do the calculation for each gene.
 Normal users often don't need to use this function directly.}
 \usage{
-robtest(y1, d1, y2, d2, c.tukey.beta = 4, c.tukey.phi = 4)
+robtest(y1, log.depth1, y2, log.depth2, c.tukey.beta = 4, c.tukey.phi = 4)
 }
 \arguments{
 \item{y1}{counts from group 1. a vector.}
 
-\item{d1}{sequencing depth for samples in group 1. a vector.}
+\item{log.depth1}{log(sequencing depths) for samples in group 1. a vector.}
 
 \item{y2}{counts from group 2. a vector.}
 
-\item{d2}{sequencing depth for samples in group 2. a vector.}
+\item{log.depth2}{log(sequencing depths) for samples in group 2. a vector.}
 
 \item{c.tukey.beta}{The c value for beta in Huber function. The default value, 4, is typically
 regarded as appropriate and should work for most datasets.}
@@ -48,5 +48,5 @@ d1 <- runif(10, min=1, max=2)
 d2 <- runif(15, min=1, max=2)
 y1 <- rnbinom(10, size=1, mu=d1*50)
 y2 <- rnbinom(15, size=1, mu=d2*50)
-res <- robtest(y1, d1, y2, d2)
+res <- robtest(y1, log(d1), y2, log(d2))
 }
